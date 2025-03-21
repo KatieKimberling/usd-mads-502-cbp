@@ -1,0 +1,215 @@
+---
+title: "R Code for Chapter 5 of Introduction to Data Mining: Association Analysis"
+author: "Michael Hahsler"
+output:
+  html_document:
+    toc: true
+---
+
+This code covers chapter 5 of "Introduction to Data Mining" by Pang-Ning Tan, Michael Steinbach and Vipin Kumar.
+
+```{r}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Used packages
+
+Install the following packages:
+
+* arules
+* arulesViz
+
+```{r}
+library(arules)
+library(arulesViz)
+```
+
+# Used data
+```{r}
+data(Zoo, package="mlbench")
+head(Zoo)
+```
+
+# Transactions
+## Create transactions
+```{r}
+try(trans <- as(Zoo, "transactions"))
+```
+
+What is column 13?
+
+```{r}
+colnames(Zoo)[13]
+legs <- Zoo[["legs"]]
+summary(legs)
+hist(legs)
+table(legs)
+```
+
+Make legs into has/does not have legs:
+```{r}
+has_legs <- legs>0
+has_legs
+table(has_legs)
+Zoo[["legs"]] <- has_legs
+
+# Convert data into a set of transactions
+trans <- as(Zoo, "transactions")
+trans
+```
+
+## Inspect Transactions
+```{r}
+summary(trans)
+
+# Look at created items
+colnames(trans)
+
+# Compare with the original features from Zoo
+colnames(Zoo)
+
+# Look at a few transactions as a matrix
+as(trans, "matrix")[1:3,]
+
+# Look at the transactions as sets of items
+inspect(trans[1:3])
+
+# Plot the binary matrix
+image(trans)
+
+# Look at the relative frequency of items
+itemFrequencyPlot(trans,topN=20)
+plot(sort(itemFrequency(trans, type="absolute"), decreasing=TRUE),
+  xlab = "Items", ylab="Support Count", type="l")
+```
+
+## Alternative encoding
+```{r}
+Zoo2 <- Zoo
+for(i in 1:ncol(Zoo2)) Zoo2[[i]] <- as.factor(Zoo2[[i]])
+sapply(Zoo2, class)
+summary(Zoo2)
+
+trans2 <- as(Zoo2, "transactions")
+trans2
+
+itemFrequencyPlot(trans2, topN=20)
+
+# Select transactions that contain a certain item
+trans_insects <- trans2[trans %in% "type=insect"]
+trans_insects
+inspect(trans_insects)
+```
+
+## Vertical layout (Transaction ID Lists)
+```{r}
+vertical <- as(trans, "tidLists")
+as(vertical, "matrix")[1:10,1:5]
+```
+
+# Frequent Itemsets
+## Mine Frequent Itemsets
+```{r}
+2^ncol(trans)
+
+is <- apriori(trans, parameter=list(target="frequent"))
+is
+
+5/nrow(trans)
+
+is <- apriori(trans, parameter=list(target="frequent", support=0.05))
+is
+
+# Sort by support
+is <- sort(is, by="support")
+inspect(head(is, n=10))
+
+# Look at frequent itemsets with many items
+barplot(table(size(is)), xlab="itemset size", ylab="count")
+inspect(is[size(is)>8])
+```
+
+## Concise Representation of Itemsets
+
+```{r}
+# Find maximal frequent itemsets
+is_max <- is[is.maximal(is)]
+is_max
+inspect(head(sort(is_max, by="support")))
+
+# Find closed frequent itemsets
+is_closed <- is[is.closed(is)]
+is_closed
+inspect(head(sort(is_closed, by="support")))
+
+barplot(c(
+  frequent=length(is),
+  closed=length(is_closed),
+  maximal=length(is_max)
+  ), ylab="count", xlab="itemsets")
+```
+
+# Association Rules
+## Mine Association Rules
+```{r}
+rules <- apriori(trans, parameter=list(support=0.05, confidence=.9))
+length(rules)
+
+inspect(head(rules))
+quality(head(rules))
+
+# Look at rules with highest lift
+rules <- sort(rules, by="lift")
+inspect(head(rules, n=10))
+
+# Create rules using the alternative encoding
+r <- apriori(trans2)
+r
+print(object.size(r), unit="Mb")
+
+inspect(r[1:10])
+inspect(head(r, by="lift", n = 10))
+```
+
+## Additional Interest Measures
+```{r}
+interestMeasure(rules[1:10], measure=c("phi", "gini"),
+  trans=trans)
+
+# Add measures to the rules
+quality(rules) <- cbind(quality(rules),
+  interestMeasure(rules, measure=c("phi", "gini"),
+    trans=trans))
+
+# Find rules which score high for Phi correlation
+inspect(head(rules, by="phi"))
+```
+
+## Mine using Templates
+```{r}
+type <- grep("type=", itemLabels(trans), value = TRUE)
+type
+
+rules_type <- apriori(trans,
+  appearance= list(rhs=type, default="lhs"))
+
+inspect(head(sort(rules_type, by="lift")))
+```
+
+## Association rule visualization
+```{r}
+# Default scatterplot
+plot(rules)
+
+# Add some jitter
+plot(rules, control=list(jitter=.5))
+
+plot(rules, shading="order", control=list(jitter=.5))
+
+# Grouped plot
+plot(rules, method="grouped")
+
+# As a graph
+plot(rules, method="graph")
+plot(head(rules, by="phi", n = 100), method="graph")
+```
